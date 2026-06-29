@@ -41,7 +41,7 @@ We verify the result using:
 
 bpftool prog show
 bpftool net show
-bpftool map dump id <MAP_ID>
+bpftool map dump id
 tcpdump
 hping3
 

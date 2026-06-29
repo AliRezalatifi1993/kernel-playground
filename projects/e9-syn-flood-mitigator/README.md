@@ -98,7 +98,7 @@ The project can be verified using:
 bpftool prog show
 bpftool net show
 bpftool map show
-bpftool map dump id <MAP_ID>
+bpftool map dump
 tcpdump
 hping3
 
