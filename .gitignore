@@ -7,3 +7,8 @@ src/c/.output/*
 
 # Ignore sentinel file created by setup-all.sh
 tests/.vm_initialized
+
+# E9 project generated files
+projects/e9-syn-flood-mitigator/xdp_syn_flood.o
+projects/e9-syn-flood-mitigator/containerlab/clab-*
+projects/e9-syn-flood-mitigator/containerlab/results/

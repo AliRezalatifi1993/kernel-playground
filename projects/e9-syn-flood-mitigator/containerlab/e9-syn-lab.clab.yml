@@ -1,0 +1,36 @@
+name: e9-syn-lab
+
+topology:
+  defaults:
+    kind: linux
+    image: clab-softnet-routing:latest
+
+  nodes:
+    Attacker-Host:
+      binds:
+        - configs/Attacker-Host.cfg:/etc/nodes/Attacker-Host.cfg:ro
+        - bin/entrypoint.sh:/entrypoint.sh:ro
+      exec:
+        - bash /entrypoint.sh
+
+    Mitigator-router:
+      binds:
+        - configs/Mitigator-router.cfg:/etc/nodes/Mitigator-router.cfg:ro
+        - bin/entrypoint.sh:/entrypoint.sh:ro
+      exec:
+        - bash /entrypoint.sh
+
+    Victim-Host:
+      binds:
+        - configs/Victim-Host.cfg:/etc/nodes/Victim-Host.cfg:ro
+        - bin/entrypoint.sh:/entrypoint.sh:ro
+      exec:
+        - bash /entrypoint.sh
+
+  links:
+    - endpoints:
+        - Attacker-Host:eth1
+        - Mitigator-router:eth1
+    - endpoints:
+        - Mitigator-router:eth2
+        - Victim-Host:eth1

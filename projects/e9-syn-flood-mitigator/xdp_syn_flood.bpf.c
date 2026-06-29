@@ -13,7 +13,7 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
-#define WINDOW_NS 1000000000ULL   // 1 second
+#define WINDOW_NS 10000000000ULL   // 10 second
 #define SYN_THRESHOLD 50          // max SYN packets per second per source IP
 
 #define STAT_TOTAL_SYN 0

@@ -1,3 +1,7 @@
+## Software Networks Project
+
+- [E9 — SYN Flood Mitigator](projects/e9-syn-flood-mitigator/README.md)
+
 # Project Overview
 
 This repository provides tools and resources for customizing and building a Linux kernel with a focus on packet filtering using the Netfilter subsystem. It also includes scripts and configurations for setting up a testing environment within virtual machines.
