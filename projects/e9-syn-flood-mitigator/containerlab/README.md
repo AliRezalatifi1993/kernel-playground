@@ -1,10 +1,5 @@
 # E9 — SYN Flood Mitigator with eBPF/XDP
 
-> [!IMPORTANT]
-> This README is written for **project evaluation**. It uses the **current node names and IP addresses** already present in this repository.
-
----
-
 ## Project Goal
 
 This project implements **E9 — SYN Flood Mitigator** using **eBPF/XDP**.
