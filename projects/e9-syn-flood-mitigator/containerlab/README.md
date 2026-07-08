@@ -1,300 +1,256 @@
-# E9 — SYN Flood Mitigator with eBPF/XDP
+# ╔════════════════════════════════════════╗
+# ║ E9 — SYN Flood Mitigator with eBPF/XDP ║
+# ╚════════════════════════════════════════╝
 
-## Project Goal
+This project implements **E9 — SYN Flood Mitigator** for the Software Networks course.
 
-This project implements **E9 — SYN Flood Mitigator** using **eBPF/XDP**.
-
-The XDP program is attached to the **Mitigator-router**. It inspects TCP packets, counts TCP SYN packets, tracks SYN traffic per source IP, and drops excessive SYN packets using `XDP_DROP`.
-
-| Level | Status | Implemented behavior |
-|---|---:|---|
-| Basic | ✅ | Count incoming TCP SYN packets. |
-| Intermediate | ✅ | Track SYN packets per source IP using a BPF map. |
-| Advanced | ✅ | Drop SYN packets from sources exceeding the threshold. |
-
----
-
-## Testbed Topology
+The idea is simple: the router watches incoming TCP **SYN** packets. If one source sends too many SYN packets in the selected time window, the XDP program drops the extra packets before they reach the victim.
 
 ```text
-╔═══════════════╗        ╔══════════════════╗        ╔═════════════╗
-║ Attacker-Host ║ ─────▶ ║ Mitigator-router ║ ─────▶ ║ Victim-Host ║
-╚═══════════════╝        ╚══════════════════╝        ╚═════════════╝
-    10.0.1.1/24              eth1: 10.0.1.254/24         10.0.2.1/24
-    fc00:1::1/64             eth2: 10.0.2.254/24         fc00:2::1/64
-                              XDP attached on eth1
+Attacker-Host  ───▶  Mitigator-router  ───▶  Victim-Host
+10.0.1.1              10.0.1.254 / 10.0.2.254    10.0.2.1
+                         XDP attached on eth1
 ```
 
-```mermaid
-flowchart LR
-    A[Attacker-Host<br/>10.0.1.1] -->|TCP SYN packets| M[Mitigator-router<br/>10.0.1.254 / 10.0.2.254]
-    M -->|Allowed packets| V[Victim-Host<br/>10.0.2.1]
-    M -->|Excessive SYN packets| D[XDP_DROP]
-```
+## What is implemented
 
----
-
-## Current Lab Values
-
-These values match the current repository configuration.
-
-| Item | Current value |
+| Level | Result |
 |---|---|
-| Lab name | `e9-syn-lab` |
-| Topology file | `containerlab/e9-syn-lab.clab.yml` |
-| Attacker node | `Attacker-Host` |
-| Mitigator node | `Mitigator-router` |
-| Victim node | `Victim-Host` |
-| Attacker IPv4 | `10.0.1.1/24` |
-| Mitigator IPv4 toward attacker | `10.0.1.254/24` |
-| Mitigator IPv4 toward victim | `10.0.2.254/24` |
-| Victim IPv4 | `10.0.2.1/24` |
-| XDP interface on mitigator | `eth1` |
-| Victim interface | `eth1` |
-| Test TCP port | `80` |
+| Basic | Counts incoming TCP SYN packets |
+| Intermediate | Tracks SYN packets per source IP using a BPF map |
+| Advanced | Drops SYN packets after the source exceeds the threshold |
 
-> [!NOTE]
-> Containerlab creates Docker container names with the `clab-<lab-name>-<node-name>` format. Because this project uses uppercase node names, the safest method is to detect the real container names after deployment using `docker ps`.
-
----
-
-## 1. Requirements
-
-Install the required tools on the VM/host:
-
-```bash
-sudo apt update
-sudo apt install -y docker.io containerlab clang llvm libbpf-dev linux-libc-dev \
-  make gcc iproute2 iputils-ping bpftool tcpdump hping3
-```
-
----
-
-## 2. Deploy the Containerlab Topology
-
-From the project root:
-
-```bash
-cd projects/e9-syn-flood-mitigator/containerlab
-sudo ./deploy.sh
-```
-
-Check that the containers are running:
-
-```bash
-docker ps --format 'table {{.Names}}\t{{.Status}}'
-```
-
-Save the current container names into variables:
-
-```bash
-ATTACKER=$(docker ps --format '{{.Names}}' | grep 'Attacker-Host')
-MITIGATOR=$(docker ps --format '{{.Names}}' | grep 'Mitigator-router')
-VICTIM=$(docker ps --format '{{.Names}}' | grep 'Victim-Host')
-
-VICTIM_IP="10.0.2.1"
-XDP_IFACE="eth1"
-VICTIM_IFACE="eth1"
-VICTIM_PORT="80"
-```
-
-Check the detected names:
-
-```bash
-echo "$ATTACKER"
-echo "$MITIGATOR"
-echo "$VICTIM"
-```
-
----
-
-## 3. Connectivity Test Before XDP
-
-Before attaching the XDP program, check that the attacker can reach the victim:
-
-```bash
-docker exec "$ATTACKER" ping -c 3 "$VICTIM_IP"
-```
-
-Expected result:
+The main code is in:
 
 ```text
-The ping should work before the XDP filter is attached.
+xdp_syn_flood.bpf.c
+```
+
+The useful scripts are in:
+
+```text
+scripts/load.sh
+scripts/unload.sh
+scripts/show_maps.sh
+scripts/test_syn_flood.sh
 ```
 
 ---
 
-## 4. Build the eBPF/XDP Program
+## 1. Build the XDP program
 
-From the project directory that contains the `Makefile`:
+From the project folder:
+
+```bash
+cd ~/kernel-playground/projects/e9-syn-flood-mitigator
+make clean
+make
+```
+
+Expected output:
+
+```text
+xdp_syn_flood.o
+```
+
+---
+
+## 2. Deploy the Containerlab testbed
+
+The testbed is based on the course routing lab, renamed for this project:
+
+```text
+Attacker-Host
+Mitigator-router
+Victim-Host
+```
+
+Deploy it from the Containerlab folder:
+
+```bash
+cd ~/softnet-container-lab/containerlab/e9-syn-lab
+chmod +x deploy.sh
+./deploy.sh
+```
+
+Check containers:
+
+```bash
+sudo docker ps
+```
+
+Expected container names:
+
+```text
+clab-e9-syn-lab-Attacker-Host
+clab-e9-syn-lab-Mitigator-router
+clab-e9-syn-lab-Victim-Host
+```
+
+---
+
+## 3. Check basic connectivity
+
+Enter the attacker:
+
+```bash
+sudo docker exec -it clab-e9-syn-lab-Attacker-Host bash
+ping 10.0.2.1
+```
+
+The ping should work before attaching XDP.
+
+---
+
+## 4. Copy the project into the mitigator
+
+From the host VM:
+
+```bash
+sudo docker cp ~/kernel-playground/projects/e9-syn-flood-mitigator \
+  clab-e9-syn-lab-Mitigator-router:/root/e9
+```
+
+Enter the mitigator:
+
+```bash
+sudo docker exec -it clab-e9-syn-lab-Mitigator-router bash
+cd /root/e9
+```
+
+Compile again inside the container if needed:
 
 ```bash
 make clean
 make
 ```
 
-Check that the object file was created:
+---
+
+## 5. Attach the XDP program
+
+On the mitigator, find the interface facing the attacker:
 
 ```bash
-find . -name "*.bpf.o" -o -name "*.o"
+ip addr
+```
+
+In this lab, the attacker-facing interface is usually `eth1` with IP `10.0.1.254`.
+
+Attach the program:
+
+```bash
+cd /root/e9
+./scripts/load.sh eth1
+```
+
+Check attachment:
+
+```bash
+ip -details link show dev eth1
 ```
 
 ---
 
-## 5. Copy the XDP Object File to the Mitigator
+## 6. Start the victim server
 
-Replace the object file name if your compiled file has a different name:
-
-```bash
-docker cp ./e9_syn_flood.bpf.o "$MITIGATOR":/root/e9_syn_flood.bpf.o
-```
-
-If your object file is inside another directory, use this style instead:
+Open a new terminal and enter the victim:
 
 ```bash
-docker cp ./build/e9_syn_flood.bpf.o "$MITIGATOR":/root/e9_syn_flood.bpf.o
+sudo docker exec -it clab-e9-syn-lab-Victim-Host bash
+apt update
+apt install -y python3
+python3 -m http.server 80
 ```
+
+Leave this running.
 
 ---
 
-## 6. Attach the XDP Program
+## 7. Generate traffic from the attacker
 
-Attach the XDP program on the **Mitigator-router interface facing the attacker**:
-
-```bash
-docker exec -it "$MITIGATOR" ip link set dev "$XDP_IFACE" xdpgeneric obj /root/e9_syn_flood.bpf.o sec xdp
-```
-
-Verify that XDP is attached:
+Open another terminal and enter the attacker:
 
 ```bash
-docker exec -it "$MITIGATOR" bpftool net show
-
-docker exec -it "$MITIGATOR" bpftool prog show
+sudo docker exec -it clab-e9-syn-lab-Attacker-Host bash
+apt update
+apt install -y curl hping3
 ```
 
-> [!TIP]
-> Inside containers, `xdpgeneric` is normally safer than native XDP because Containerlab links are virtual Ethernet interfaces.
+Normal traffic:
+
+```bash
+curl http://10.0.2.1
+```
+
+SYN flood test:
+
+```bash
+hping3 -S -c 300 -i u1000 -p 80 10.0.2.1
+```
+
+Expected behavior: only the allowed SYN packets pass; after the threshold, the mitigator starts dropping packets with `XDP_DROP`.
 
 ---
 
-## 7. Test Normal SYN Traffic
+## 8. Check counters
 
-Send a small number of TCP SYN packets from the attacker to the victim:
+Inside the mitigator:
 
 ```bash
-docker exec -it "$ATTACKER" hping3 -S -c 5 -p "$VICTIM_PORT" "$VICTIM_IP"
+cd /root/e9
+./scripts/show_maps.sh
 ```
 
-Expected result:
+If `bpftool` inside the container has problems, check maps from the host VM:
+
+```bash
+sudo bpftool map show
+sudo bpftool map dump name stats_map
+sudo bpftool map dump name syn_rate_map
+```
+
+Example successful result:
 
 ```text
-Normal SYN packets are counted and should pass because they are below the threshold.
+syn_count  = 300
+drop_count = 250
 ```
 
-Check BPF maps:
+This means the first 50 SYN packets were allowed and the remaining 250 were dropped.
+
+---
+
+## 9. Detach XDP
+
+Inside the mitigator:
 
 ```bash
-docker exec -it "$MITIGATOR" bpftool map show
+cd /root/e9
+./scripts/unload.sh eth1
 ```
 
-Then dump the relevant map:
+If needed, detach manually:
 
 ```bash
-docker exec -it "$MITIGATOR" bpftool map dump id <MAP_ID>
+ip link set dev eth1 xdpgeneric off
 ```
 
 ---
 
-## 8. Test SYN Flood Traffic
-
-Start tcpdump on the victim:
-
-```bash
-docker exec -it "$VICTIM" tcpdump -i "$VICTIM_IFACE" tcp
-```
-
-In another terminal, send SYN flood traffic from the attacker:
-
-```bash
-docker exec -it "$ATTACKER" hping3 -S --flood -p "$VICTIM_PORT" "$VICTIM_IP"
-```
-
-Expected result:
+## Final result
 
 ```text
-After the threshold is exceeded, the XDP program drops excessive SYN packets.
-The victim should receive fewer packets or stop receiving packets from the attacker.
+Normal traffic passes.
+SYN packets are counted per source IP.
+When the attacker exceeds the threshold, extra SYN packets are dropped by XDP.
 ```
 
----
+## Notes
 
-## 9. Verification Commands
+- `SYN_THRESHOLD` controls how many SYN packets are allowed.
+- `WINDOW_NS` controls the time window.
+- For slower attacks, increase `WINDOW_NS`, for example from 1 second to 10 seconds.
+- `xdpgeneric` is used because Containerlab interfaces are virtual Ethernet interfaces.
 
-Use these commands on the mitigator:
-
-```bash
-docker exec -it "$MITIGATOR" bpftool prog show
-
-docker exec -it "$MITIGATOR" bpftool net show
-
-docker exec -it "$MITIGATOR" bpftool map show
-
-docker exec -it "$MITIGATOR" bpftool map dump id <MAP_ID>
-```
-
-Use this command on the victim:
-
-```bash
-docker exec -it "$VICTIM" tcpdump -i "$VICTIM_IFACE" tcp
-```
-
----
-
-## 10. Detach XDP
-
-Detach the XDP program from the mitigator:
-
-```bash
-docker exec -it "$MITIGATOR" ip link set dev "$XDP_IFACE" xdp off
-```
-
-Verify:
-
-```bash
-docker exec -it "$MITIGATOR" bpftool net show
-```
-
----
-
-## 11. Destroy the Lab
-
-From the Containerlab directory:
-
-```bash
-cd projects/e9-syn-flood-mitigator/containerlab
-sudo containerlab destroy -t e9-syn-lab.clab.yml
-```
-
----
-
-## Expected Final Result
-
-```text
-Normal TCP SYN packets are allowed.
-Excessive SYN packets from the attacker are detected per source IP.
-When the source exceeds the threshold, the mitigator returns XDP_DROP.
-The victim receives fewer or no SYN packets during the attack.
-```
-
----
-
-## Quick Notes for Evaluators
-
-- The XDP program is attached to `Mitigator-router` on `eth1`.
-- The attacker is `Attacker-Host` with IP `10.0.1.1`.
-- The victim is `Victim-Host` with IP `10.0.2.1`.
-- The test traffic is generated with `hping3`.
-- Packet visibility is checked with `tcpdump` on the victim.
-- Program and map state are checked with `bpftool`.
 
